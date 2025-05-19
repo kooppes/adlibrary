@@ -15,9 +15,9 @@ max_ads = st.slider("Max ads to fetch", 1, 50, 10)
 
 def scrape_ads(search_term, country, max_ads):
     options = Options()
-    options.add_argument("--headless")
+    options.add_argument("--headless")  # Remove if you want to see the browser for debugging
     options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
+    options.add_argument("--no-sandbox")  # On Linux, this is often required but can cause problems on some systems
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
@@ -26,7 +26,7 @@ def scrape_ads(search_term, country, max_ads):
     base_url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country={country}&q={search_term}"
     driver.get(base_url)
     
-    time.sleep(5)  # Let the page load
+    time.sleep(6)  # Let the page load fully
     
     ads_data = []
     scroll_pause_time = 2
@@ -36,7 +36,6 @@ def scrape_ads(search_term, country, max_ads):
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(scroll_pause_time)
         
-        # The ads are in divs with aria-label 'Ad preview' but this can change over time
         ads = driver.find_elements(By.CSS_SELECTOR, "div[aria-label='Ad preview']")
         
         for ad in ads[len(ads_data):max_ads]:
