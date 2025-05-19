@@ -1,112 +1,53 @@
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-import time
+import requests
 import pandas as pd
-import tempfile
 
-def get_chromedriver():
-    # Adjust path if needed
-    return Service('/usr/bin/chromedriver')
+st.title("🔍 Meta Ad Library Scraper")
 
-def get_chrome_options():
-    options = Options()
-    options.binary_location = '/usr/bin/chromium-browser'  # or path to Chrome
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
-    return options
+# User inputs
+access_token = st.text_input("🔑 Enter your Meta Access Token", type="password")
+search_term = st.text_input("📌 Search Keyword (e.g., Biden, Environment)")
+country = st.text_input("🌍 Country Code (e.g., US, FR)", value="US")
+limit = st.slider("Number of Ads to Retrieve", min_value=1, max_value=100, value=25)
 
-def scrape_ads(search_term, country='United States'):
-    service = get_chromedriver()
-    options = get_chrome_options()
-    driver = webdriver.Chrome(service=service, options=options)
-
-    ads_data = []
-    try:
-        driver.get("https://www.facebook.com/ads/library")
-        time.sleep(5)
-
-        # Accept cookies if prompted
+if st.button("Search Ads"):
+    if not access_token or not search_term or not country:
+        st.error("Please fill in all fields.")
+    else:
+        st.info("Fetching ads from Meta Ad Library API...")
+        url = "https://graph.facebook.com/v19.0/ads_archive"
+        params = {
+            "search_terms": search_term,
+            "ad_reached_countries": country,
+            "ad_type": "POLITICAL_AND_ISSUE_ADS",
+            "fields": "ad_creative_body,ad_creative_link_caption,ad_creative_link_title,ad_delivery_start_time,ad_delivery_stop_time,page_name",
+            "limit": limit,
+            "access_token": access_token
+        }
+        
         try:
-            cookie_btn = driver.find_element(By.XPATH, '//button[contains(text(), "Allow all cookies")]')
-            cookie_btn.click()
-            time.sleep(2)
-        except:
-            pass
-
-        # Set country
-        country_input = driver.find_element(By.XPATH, '//label[contains(text(), "Country")]/following-sibling::div//input')
-        country_input.clear()
-        country_input.send_keys(country)
-        time.sleep(1)
-        country_input.send_keys(Keys.RETURN)
-
-        # Search term
-        search_input = driver.find_element(By.XPATH, '//input[@placeholder="Search ads"]')
-        search_input.clear()
-        search_input.send_keys(search_term)
-        search_input.send_keys(Keys.RETURN)
-
-        time.sleep(10)
-
-        # Scroll to load more ads
-        for _ in range(3):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3)
-
-        ads = driver.find_elements(By.XPATH, '//div[contains(@data-testid, "ad")]')
-        for ad in ads:
-            try:
-                page_name = ad.find_element(By.XPATH, './/span[contains(@class,"_9cd2")]').text
-            except:
-                page_name = "N/A"
-            try:
-                ad_text = ad.find_element(By.XPATH, './/div[contains(@data-testid,"ad_creative_body")]').text
-            except:
-                ad_text = "N/A"
-            try:
-                ad_link = ad.find_element(By.XPATH, './/a[contains(text(),"See ad details")]').get_attribute("href")
-            except:
-                ad_link = "N/A"
-
-            ads_data.append({
-                'Page Name': page_name,
-                'Ad Text': ad_text,
-                'Ad Details Link': ad_link
-            })
-
-    finally:
-        driver.quit()
-
-    return ads_data
-
-# Streamlit UI
-st.title("Meta Ad Library Scraper - Guild of Guardians Example")
-
-search_term = st.text_input("Enter search term:", "Guild of Guardians")
-
-if st.button("Scrape Ads"):
-    with st.spinner("Scraping ads from Meta Ad Library... this may take a moment"):
-        data = scrape_ads(search_term)
-        if data:
-            df = pd.DataFrame(data)
-            st.success(f"Found {len(data)} ads!")
-            st.dataframe(df)
-
-            # CSV download
-            tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-            df.to_csv(tmp_file.name, index=False)
-            st.download_button(
-                label="Download CSV",
-                data=open(tmp_file.name, "rb").read(),
-                file_name=f"{search_term.replace(' ', '_')}_ads.csv",
-                mime="text/csv"
-            )
-        else:
-            st.warning("No ads found or scraping failed.")
-
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+            ads = data.get("data", [])
+            
+            if len(ads) == 0:
+                st.warning("No ads found for your query.")
+            else:
+                # Convert to DataFrame
+                df = pd.DataFrame(ads)
+                st.success(f"Found {len(df)} ads.")
+                st.dataframe(df)
+                
+                # Download CSV
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download CSV", csv, "meta_ads.csv", "text/csv")
+        
+        except requests.exceptions.HTTPError as errh:
+            st.error(f"HTTP Error: {errh}")
+        except requests.exceptions.ConnectionError as errc:
+            st.error(f"Error Connecting: {errc}")
+        except requests.exceptions.Timeout as errt:
+            st.error(f"Timeout Error: {errt}")
+        except requests.exceptions.RequestException as err:
+            st.error(f"Oops! Something went wrong: {err}")
